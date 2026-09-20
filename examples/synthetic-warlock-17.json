@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "addonVersion": "0.1.0",
+  "capturedAt": "2026-01-01T00:00:00Z",
+  "build": { "version": "synthetic", "build": "0", "interface": 16001 },
+  "locale": "enUS",
+  "character": {
+    "class": "WARLOCK", "classId": 9, "race": "Human", "level": 17,
+    "health": { "current": 400, "max": 400 },
+    "mana": { "current": 600, "max": 600 },
+    "stats": {
+      "strength": 20, "agility": 20, "stamina": 30, "intellect": 40, "spirit": 35,
+      "armor": 150,
+      "spellDamageBySchool": { "6": 0 },
+      "spellCritBySchool": { "6": 5 },
+      "manaRegen": { "base": 6, "casting": 0 }
+    }
+  },
+  "equipment": [
+    { "slot": 18, "itemId": 11288, "link": "|Hitem:11288:0:0:0:0:0:0:0:17|h[Synthetic wand]|h", "classId": 2, "subClassId": 19 }
+  ],
+  "wand": {
+    "slot": 18, "itemId": 11288, "minDamage": 20, "maxDamage": 30, "speed": 1.5,
+    "positiveBonus": 0, "negativeBonus": 0, "damageMultiplier": 1, "source": "UnitRangedDamage"
+  },
+  "spells": [
+    {
+      "id": 705, "name": "Shadow Bolt", "rank": "Rank 3", "castTimeMs": 2500,
+      "costs": [
+        { "type": 0, "name": "MANA", "cost": 45, "minCost": 45, "costPercent": 0, "costPerSec": 0, "requiredAuraID": 0, "hasRequiredAura": false }
+      ],
+      "tooltip": ["SYNTHETIC TEST DATA", "Shadow Bolt", "45 Mana", "2.5 sec cast", "Invented example: causes 60 to 80 Shadow damage."]
+    }
+  ],
+  "talents": [],
+  "pet": null,
+  "buffs": [],
+  "warnings": [
+    "Synthetic fixture only; all numbers are invented and do not verify Forever Beta balance.",
+    "Wand school unavailable as structured data; verify the item tooltip in game."
+  ]
+}

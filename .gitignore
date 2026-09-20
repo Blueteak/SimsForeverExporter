@@ -1,0 +1,9 @@
+.DS_Store
+dist/
+__pycache__/
+*.pyc
+# Real character data belongs on your own machine.
+exports/
+SavedVariables/
+SimsForeverExporter.lua
+SimsForeverExporter.lua.bak
