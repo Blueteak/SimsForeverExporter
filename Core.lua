@@ -1,6 +1,6 @@
 local _, addon = ...
 addon = addon or {}
-addon.VERSION = "0.1.0"
+addon.VERSION = "0.1.1"
 
 local unpack = unpack or table.unpack
 local function pack(...) return { n = select("#", ...), ... } end
@@ -86,8 +86,8 @@ end
 
 local function jsonString(value)
     return '"' .. value:gsub('[%z\1-\31\\"]', function(char)
-        local short = { ['"'] = '\\"', ['\\'] = '\\\\', ['\n'] = '\\n', ['\r'] = '\\r', ['\t'] = '\\t' }
-        return short[char] or string.format("\\u%04x", string.byte(char))
+        -- Unicode escapes avoid copy-window interpretation of short escapes.
+        return string.format("\\u%04x", string.byte(char))
     end) .. '"'
 end
 local function encode(value)
