@@ -1,6 +1,6 @@
 local _, addon = ...
 addon = addon or {}
-addon.VERSION = "0.1.1"
+addon.VERSION = "0.1.2"
 
 local unpack = unpack or table.unpack
 local function pack(...) return { n = select("#", ...), ... } end
@@ -305,6 +305,12 @@ local function stats()
     end
     local _, effectiveArmor = call("Armor", UnitArmor, "player")
     result.armor = number(effectiveArmor)
+    local baseAP, positiveAP, negativeAP = call("Attack power", UnitAttackPower, "player")
+    if number(baseAP) and number(positiveAP) and number(negativeAP) then
+        result.attackPower = math.max(0, baseAP + positiveAP + negativeAP)
+    else
+        warn("Attack power unavailable; export again outside combat.")
+    end
     result.spellDamageBySchool, result.spellCritBySchool = {}, {}
     for school = 1, 7 do
         result.spellDamageBySchool[tostring(school)] = number(call("Spell damage", GetSpellBonusDamage, school))
