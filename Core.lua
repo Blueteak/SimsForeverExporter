@@ -1,6 +1,7 @@
 local _, addon = ...
 addon = addon or {}
-addon.VERSION = "0.1.2"
+addon.VERSION = "@project-version@"
+if addon.VERSION:sub(1, 1) == "@" then addon.VERSION = "development" end
 
 local unpack = unpack or table.unpack
 local function pack(...) return { n = select("#", ...), ... } end

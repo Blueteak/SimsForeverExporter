@@ -2,7 +2,8 @@
 ## Title: SimsForever Exporter
 ## Notes: Export your character to SimsForever with /sfexport. No automatic uploads.
 ## Author: SimsForever contributors
-## Version: 0.1.2
+## Version: @project-version@
+## X-Curse-Project-ID: 1706857
 ## SavedVariables: SimsForeverExporterDB
 Core.lua
 UI.lua
