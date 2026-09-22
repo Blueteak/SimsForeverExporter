@@ -1,6 +1,6 @@
 local _, addon = ...
 addon = addon or {}
-addon.VERSION = "0.1.2"
+addon.VERSION = "0.1.3"
 
 local unpack = unpack or table.unpack
 local function pack(...) return { n = select("#", ...), ... } end
@@ -13,6 +13,10 @@ local function warn(message)
         warned[message] = true
         warnings[#warnings + 1] = message
     end
+end
+
+local function warnField(label, message)
+    if label then warn(label .. ": " .. message) end
 end
 
 -- Never inspect, compare, stringify, or serialize a restricted value.
@@ -30,23 +34,23 @@ end
 
 local function clean(value, label, depth)
     if not readable(value) then
-        warn(label .. ": protected data omitted; export again outside combat.")
+        warnField(label, "protected data omitted.")
         return nil
     end
     local kind = type(value)
     if kind == "nil" or kind == "string" or kind == "boolean" then return value end
     if kind == "number" then
         if value == value and value ~= math.huge and value ~= -math.huge then return value end
-        warn(label .. ": invalid number omitted.")
+        warnField(label, "invalid number omitted.")
     elseif kind == "table" and depth < 8 then
         local result, count = {}, 0
         for key, item in pairs(value) do
             count = count + 1
-            if count > 4096 then warn(label .. ": oversized API table truncated."); break end
+            if count > 4096 then warnField(label, "oversized API table truncated."); break end
             if readable(key) and (type(key) == "number" or type(key) == "string") then
                 result[key] = clean(item, label, depth + 1)
             else
-                warn(label .. ": protected key omitted.")
+                warnField(label, "protected key omitted.")
             end
         end
         return result
@@ -57,9 +61,14 @@ end
 local function call(label, fn, ...)
     if type(fn) ~= "function" then return nil end
     local values = pack(pcall(fn, ...))
-    if not values[1] then warn(label .. ": API call failed; data omitted."); return nil end
+    if not values[1] then warnField(label, "API call failed; data omitted."); return nil end
     for index = 2, values.n do values[index] = clean(values[index], label, 0) end
     return unpack(values, 2, values.n)
+end
+
+-- Optional diagnostics use the same restricted-value checks without warnings.
+local function optionalCall(_, fn, ...)
+    return call(nil, fn, ...)
 end
 
 local function namespace(name, member)
@@ -109,10 +118,11 @@ local function encode(value)
     return "{" .. table.concat(entries, ",") .. "}"
 end
 
-local function spellTooltip(id, slot, bank)
+local function spellTooltip(id, slot, bank, optional)
+    local read = optional and optionalCall or call
     local tooltip
-    if slot then tooltip = call("Spell tooltip", namespace("C_TooltipInfo", "GetSpellBookItem"), slot, bank) end
-    if not tooltip then tooltip = call("Spell tooltip", namespace("C_TooltipInfo", "GetSpellByID"), id) end
+    if slot then tooltip = read("Spell tooltip", namespace("C_TooltipInfo", "GetSpellBookItem"), slot, bank) end
+    if not tooltip then tooltip = read("Spell tooltip", namespace("C_TooltipInfo", "GetSpellByID"), id) end
     local lines = array()
     if tooltip and type(tooltip.lines) == "table" then
         for _, line in ipairs(tooltip.lines) do
@@ -122,42 +132,47 @@ local function spellTooltip(id, slot, bank)
             end
         end
     end
-    if #lines == 0 then warn("Some spell tooltips are unavailable; raw spell damage needs manual verification.") end
+    if #lines == 0 and not optional then warn("Some spell tooltips are unavailable; raw spell damage needs manual verification.") end
     return lines
 end
 
-local function spellDetails(id, name, rank, slot, bank)
+local function spellDetails(id, name, rank, slot, bank, optional)
+    local read = optional and optionalCall or call
     if type(id) ~= "number" or id <= 0 then return nil end
-    local info = call("Spell info", namespace("C_Spell", "GetSpellInfo"), id)
+    local info = read("Spell info", namespace("C_Spell", "GetSpellInfo"), id)
     local castTime
     if type(info) == "table" then
         name = name or stringValue(info.name)
         castTime = number(info.castTime)
     else
-        local legacyName, legacyRank, _, legacyTime = call("Spell info", GetSpellInfo, id)
+        local legacyName, legacyRank, _, legacyTime = read("Spell info", GetSpellInfo, id)
         name, rank, castTime = name or legacyName, rank or legacyRank, number(legacyTime)
     end
-    if type(name) ~= "string" then warn("A learned spell has no readable name; entry omitted."); return nil end
+    if type(name) ~= "string" then
+        if not optional then warn("A learned spell has no readable name; entry omitted.") end
+        return nil
+    end
     local result = { id = id, name = name, rank = stringValue(rank), castTimeMs = castTime }
-    if castTime == nil then warn("Some spell cast times are unavailable; missing times do not mean instant casts.") end
-    if not rank then result.rank = call("Spell rank", namespace("C_Spell", "GetSpellSubtext"), id) end
+    if castTime == nil and not optional then warn("Some spell cast times are unavailable; missing times do not mean instant casts.") end
+    if not rank then result.rank = read("Spell rank", namespace("C_Spell", "GetSpellSubtext"), id) end
     if result.rank == "" then result.rank = nil end
-    local costs = call("Spell cost", namespace("C_Spell", "GetSpellPowerCost") or GetSpellPowerCost, id)
-    if costs == nil and slot then costs = call("Spell cost", namespace("C_SpellBook", "GetSpellBookItemPowerCost"), slot, bank) end
+    -- Costs are optional import-check data; simulations use internal spell info.
+    local costs = optionalCall("Spell cost", namespace("C_Spell", "GetSpellPowerCost") or GetSpellPowerCost, id)
+    if costs == nil and slot then costs = optionalCall("Spell cost", namespace("C_SpellBook", "GetSpellBookItemPowerCost"), slot, bank) end
     if type(costs) == "table" then
         result.costs = array()
         for _, cost in ipairs(costs) do
             local item = pick(cost, {"type", "name", "cost", "minCost", "costPercent", "costPerSec", "requiredAuraID", "hasRequiredAura"})
             if type(item.type) == "number" then result.costs[#result.costs + 1] = item end
         end
-    else
-        warn("Some spell costs are unavailable; missing costs do not mean free spells.")
     end
-    result.tooltip = spellTooltip(id, slot, bank)
+    result.tooltip = spellTooltip(id, slot, bank, optional)
     return result
 end
 
+-- Pet abilities are modeled internally; keep their capture as optional diagnostics.
 local function spells(isPet)
+    local read = isPet and optionalCall or call
     local result, seen = array(), {}
     local modern = namespace("C_SpellBook", "GetSpellBookItemInfo")
     if modern and not isPet and (not namespace("C_SpellBook", "GetNumSpellBookSkillLines") or not namespace("C_SpellBook", "GetSpellBookSkillLineInfo")) then
@@ -166,52 +181,52 @@ local function spells(isPet)
     local bank = isPet and 1 or 0 -- SpellBookSpellBank, verified for interface 16001.
     local function add(id, name, rank, slot)
         if type(id) == "number" and not seen[id] then
-            local item = spellDetails(id, name, rank, modern and slot or nil, bank)
+            local item = spellDetails(id, name, rank, modern and slot or nil, bank, isPet)
             if item then seen[id] = true; result[#result + 1] = item end
         end
     end
     local function visit(index)
         if modern then
-            local info = call("Spellbook item", modern, index, bank)
+            local info = read("Spellbook item", modern, index, bank)
             if type(info) == "table" and info.itemType == 1 and info.isOffSpec ~= true then
                 -- FutureSpell (2), PetAction (3), and flyouts (4) are not learned spells.
                 add(info.spellID or info.actionID, info.name, info.subName, index)
             elseif type(info) == "table" and info.itemType == 4 then
-                local _, _, count = call("Spell flyout", GetFlyoutInfo, info.actionID)
+                local _, _, count = read("Spell flyout", GetFlyoutInfo, info.actionID)
                 for flyoutSlot = 1, math.min(number(count) or 0, 200) do
-                    local id, override, known = call("Spell flyout", GetFlyoutSlotInfo, info.actionID, flyoutSlot)
+                    local id, override, known = read("Spell flyout", GetFlyoutSlotInfo, info.actionID, flyoutSlot)
                     if known == true then add(override or id) end
                 end
             end
         else
             local book = isPet and (BOOKTYPE_PET or "pet") or (BOOKTYPE_SPELL or "spell")
-            local kind, id = call("Spellbook item", GetSpellBookItemInfo, index, book)
+            local kind, id = read("Spellbook item", GetSpellBookItemInfo, index, book)
             if kind == "SPELL" then
-                local name, rank = call("Spellbook name", GetSpellBookItemName, index, book)
+                local name, rank = read("Spellbook name", GetSpellBookItemName, index, book)
                 add(id, name, rank)
             end
         end
     end
     if isPet then
-        local count = call("Pet spellbook", namespace("C_SpellBook", "HasPetSpells") or HasPetSpells)
+        local count = read("Pet spellbook", namespace("C_SpellBook", "HasPetSpells") or HasPetSpells)
         for index = 1, math.min(number(count) or 0, 500) do visit(index) end
     elseif modern then
-        local count = call("Spellbook skill lines", namespace("C_SpellBook", "GetNumSpellBookSkillLines"))
+        local count = read("Spellbook skill lines", namespace("C_SpellBook", "GetNumSpellBookSkillLines"))
         for index = 1, math.min(number(count) or 0, 100) do
-            local line = call("Spellbook skill line", namespace("C_SpellBook", "GetSpellBookSkillLineInfo"), index)
+            local line = read("Spellbook skill line", namespace("C_SpellBook", "GetSpellBookSkillLineInfo"), index)
             if type(line) == "table" and not line.offSpecID then
                 local offset, size = number(line.itemIndexOffset), number(line.numSpellBookItems)
                 if offset and size then for slot = offset + 1, offset + math.min(size, 1000) do visit(slot) end end
             end
         end
     else
-        local count = call("Spellbook tabs", GetNumSpellTabs)
+        local count = read("Spellbook tabs", GetNumSpellTabs)
         for index = 1, math.min(number(count) or 0, 100) do
-            local _, _, offset, size = call("Spellbook tab", GetSpellTabInfo, index)
+            local _, _, offset, size = read("Spellbook tab", GetSpellTabInfo, index)
             if number(offset) and number(size) then for slot = offset + 1, offset + math.min(size, 1000) do visit(slot) end end
         end
     end
-    if #result == 0 then warn(isPet and "Pet spells unavailable or none learned." or "Learned spells unavailable; do not infer spell availability from level.") end
+    if #result == 0 and not isPet then warn("Learned spells unavailable; do not infer spell availability from level.") end
     table.sort(result, function(left, right) return left.id < right.id end)
     return result
 end
@@ -291,10 +306,12 @@ local function equipment()
 end
 
 local function resources(unit)
+    local read = unit == "player" and call or optionalCall
+    -- Starting resources are selected in the simulator; only player maxima are required.
     return {
-        current = number(call("Health", UnitHealth, unit)), max = number(call("Maximum health", UnitHealthMax, unit))
+        current = number(optionalCall("Current health", UnitHealth, unit)), max = number(read("Maximum health", UnitHealthMax, unit))
     }, {
-        current = number(call("Mana", UnitPower, unit, 0)), max = number(call("Maximum mana", UnitPowerMax, unit, 0))
+        current = number(optionalCall("Current mana", UnitPower, unit, 0)), max = number(read("Maximum mana", UnitPowerMax, unit, 0))
     }
 end
 local function stats()
@@ -309,7 +326,7 @@ local function stats()
     if number(baseAP) and number(positiveAP) and number(negativeAP) then
         result.attackPower = math.max(0, baseAP + positiveAP + negativeAP)
     else
-        warn("Attack power unavailable; export again outside combat.")
+        warn("Attack power unavailable.")
     end
     result.spellDamageBySchool, result.spellCritBySchool = {}, {}
     for school = 1, 7 do
@@ -351,7 +368,10 @@ function addon.Capture()
     local _, class, classId = call("Class", UnitClass, "player")
     local _, race = call("Race", UnitRace, "player")
     local health, mana = resources("player")
-    if not health.max or not mana.max then warn("Player resources incomplete; export again outside combat.") end
+    if not health.max or health.max <= 0 then warn("Maximum health: unavailable.") end
+    if class ~= "WARRIOR" and class ~= "ROGUE" and (not mana.max or mana.max <= 0) then
+        warn("Maximum mana: unavailable.")
+    end
     local gear, wand = equipment()
     local pet = NULL
     local exists = call("Pet presence", UnitExists, "pet")
