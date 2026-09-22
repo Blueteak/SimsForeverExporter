@@ -1,0 +1,13 @@
+package-as: SimsForeverExporter
+enable-nolib-creation: no
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+# Keep the repository's LICENSE in the package.
+# Dotfiles and this configuration are excluded automatically.
+ignore:
+  - README.md
+  - RELEASING.md
+  - AGENTS.md
