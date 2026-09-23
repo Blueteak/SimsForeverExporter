@@ -9,6 +9,15 @@ local arrayTag = {}
 local function array() return setmetatable({}, arrayTag) end
 local NULL = {}
 local warnings, warned
+local bankOpen = false
+if type(CreateFrame) == "function" then
+    local bankEvents = CreateFrame("Frame")
+    bankEvents:RegisterEvent("BANKFRAME_OPENED")
+    bankEvents:RegisterEvent("BANKFRAME_CLOSED")
+    bankEvents:SetScript("OnEvent", function(_, event)
+        bankOpen = event == "BANKFRAME_OPENED"
+    end)
+end
 local function warn(message)
     if not warned[message] then
         warned[message] = true
@@ -306,6 +315,68 @@ local function equipment()
     return result, wand
 end
 
+local function itemDetails(link, itemId)
+    local itemApi = namespace("C_Item", "GetItemInfoInstant") or GetItemInfoInstant
+    local resolvedId, _, _, equipLoc = call("Inventory item type", itemApi, link or itemId)
+    if not number(resolvedId) and type(link) == "string" then
+        resolvedId = tonumber(link:match("|Hitem:(%d+)"))
+        if resolvedId then
+            local fallbackId, _, _, fallbackEquipLoc = call("Inventory item type", itemApi, resolvedId)
+            resolvedId, equipLoc = number(fallbackId) or resolvedId, equipLoc or fallbackEquipLoc
+        end
+    end
+    if not number(itemId) then itemId = number(resolvedId) end
+    if not itemId then return nil end
+    -- Empty equip location identifies known non-equippable items. Missing metadata
+    -- stays in the export as a candidate so an uncached possible item is not lost.
+    if equipLoc == "" then return nil end
+    if equipLoc == nil then warn("Some inventory item types are unavailable; possible gear was retained.") end
+    local name, cachedLink = call("Inventory item name", GetItemInfo, link or itemId)
+    if type(link) ~= "string" then link = stringValue(cachedLink) end
+    if type(name) ~= "string" and type(link) == "string" then name = link:match("|h%[([^%]]+)%]|h") end
+    if type(name) ~= "string" then name = "Item " .. tostring(itemId) end
+    local enchantId = type(link) == "string" and tonumber(link:match("|Hitem:%d+:(%d+)")) or nil
+    local entry = { itemId = itemId, link = stringValue(link) or NULL, name = name, equipLoc = stringValue(equipLoc) or NULL,
+        source = nil, bag = nil, bagSlot = nil }
+    if enchantId and enchantId > 0 then entry.enchantId = enchantId end
+    return entry
+end
+
+local function inventory()
+    local result = array()
+    local getSlots = namespace("C_Container", "GetContainerNumSlots") or GetContainerNumSlots
+    local getLink = namespace("C_Container", "GetContainerItemLink") or GetContainerItemLink
+    local getId = namespace("C_Container", "GetContainerItemID") or GetContainerItemID
+    if type(getSlots) ~= "function" or type(getLink) ~= "function" then
+        warn("Inventory container API unavailable; carried item inventory omitted.")
+        return result
+    end
+    local function scan(bag, source)
+        local slots = number(call("Inventory bag slots", getSlots, bag)) or 0
+        for bagSlot = 1, math.min(slots, 500) do
+            local link = call("Inventory item link", getLink, bag, bagSlot)
+            local itemId = type(getId) == "function" and number(call("Inventory item ID", getId, bag, bagSlot)) or nil
+            if not itemId and type(link) == "string" then itemId = tonumber(link:match("|Hitem:(%d+)")) end
+            if link or itemId then
+                local item = itemDetails(link, itemId)
+                if item then
+                    item.source, item.bag, item.bagSlot = source, bag, bagSlot
+                    result[#result + 1] = item
+                end
+            end
+        end
+    end
+    local bagCount = math.min(number(NUM_BAG_SLOTS) or 4, 20)
+    for bag = 0, bagCount do scan(bag, "bags") end
+    if bankOpen then
+        scan(-1, "bank")
+        local purchased = call("Bank bag slots", GetNumBankSlots)
+        local bankBagCount = math.min(number(purchased) or number(NUM_BANKBAGSLOTS) or 7, 20)
+        for index = 1, bankBagCount do scan(bagCount + index, "bank") end
+    end
+    return result
+end
+
 local function resources(unit)
     local read = unit == "player" and call or optionalCall
     -- Starting resources are selected in the simulator; only player maxima are required.
@@ -374,6 +445,7 @@ function addon.Capture()
         warn("Maximum mana: unavailable.")
     end
     local gear, wand = equipment()
+    local carriedInventory = inventory()
     local pet = NULL
     local exists = call("Pet presence", UnitExists, "pet")
     if exists == true then
@@ -392,7 +464,7 @@ function addon.Capture()
         locale = call("Locale", GetLocale),
         character = { class = required(class, "Class"), classId = required(classId, "Class ID"), race = required(race, "Race"),
             level = required(number(call("Level", UnitLevel, "player")), "Level"), health = health, mana = mana, stats = stats() },
-        equipment = gear, wand = wand, spells = spells(false), talents = talents(), pet = pet, buffs = buffs(), warnings = warnings
+        equipment = gear, inventory = carriedInventory, wand = wand, spells = spells(false), talents = talents(), pet = pet, buffs = buffs(), warnings = warnings
     }
     return result
 end

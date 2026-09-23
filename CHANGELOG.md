@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5
+
+- Export equippable gear from carried bags and, while the bank window is open, the bank and bank bags.
+- Preserve item links and enchant IDs for inventory gear; keep schema version 1.
+
 ## 0.1.4
 
 - Stop warning about optional current health, current mana, spell costs, and pet spell details. Available values are still captured.
