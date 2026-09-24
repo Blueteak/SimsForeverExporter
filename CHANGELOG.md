@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.6
+
+- Add /simf as an alias for /sfexport and /simsforever, including save and clear.
+- Close the export window automatically after Ctrl+C, Cmd+C, or Ctrl+Insert.
+
 ## 0.1.5
 
 - Export equippable gear from carried bags and, while the bank window is open, the bank and bank bags.

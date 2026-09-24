@@ -29,7 +29,7 @@ local function createWindow()
     hint:SetPoint("TOPLEFT", 20, -48)
     hint:SetWidth(690)
     hint:SetJustifyH("LEFT")
-    hint:SetText("Press Ctrl+C to copy, then paste at simsforever.com. Escape closes this window.\nExport again after changing gear, spells, talents, or buffs.")
+    hint:SetText("Press Ctrl+C to copy and close, then paste at simsforever.com. Escape closes this window.\nExport again after changing gear, spells, talents, or buffs.")
     local close = CreateFrame("Button", nil, window, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", -4, -4)
     local scroll = CreateFrame("ScrollFrame", nil, window, "UIPanelScrollFrameTemplate")
@@ -42,12 +42,27 @@ local function createWindow()
     editBox:SetWidth(670)
     editBox:SetMaxLetters(0)
     editBox:SetScript("OnEscapePressed", function() window:Hide() end)
+    editBox:SetScript("OnKeyDown", function(self, key)
+        local control = IsControlKeyDown()
+        local meta = IsMetaKeyDown and IsMetaKeyDown()
+        if (key == "C" and (control or meta)) or (key == "INSERT" and control) then
+            -- Keep focus briefly so the client finishes copying before we close.
+            local remaining = 0.1
+            self:SetScript("OnUpdate", function(_, elapsed)
+                remaining = remaining - elapsed
+                if remaining <= 0 then window:Hide() end
+            end)
+        end
+    end)
     editBox:SetScript("OnTextChanged", function(self)
         local _, fontSize = self:GetFont()
         self:SetHeight(math.max(360, self:GetNumLines() * (fontSize + 4) + 30))
     end)
     scroll:SetScrollChild(editBox)
-    window:SetScript("OnHide", function() editBox:ClearFocus() end)
+    window:SetScript("OnHide", function()
+        editBox:SetScript("OnUpdate", nil)
+        editBox:ClearFocus()
+    end)
     window:RegisterEvent("PLAYER_REGEN_DISABLED")
     window:SetScript("OnEvent", function() window:Hide() end)
     UISpecialFrames = UISpecialFrames or {}
@@ -62,7 +77,7 @@ local function command(input)
         return
     end
     if input ~= "" and input ~= "save" then
-        message("/sfexport opens JSON. /sfexport save also saves the latest JSON locally. /sfexport clear removes that saved copy.")
+        message("/simf opens JSON. /simf save also saves the latest JSON locally. /simf clear removes that saved copy.")
         return
     end
     local ok, json, errorMessage = pcall(addon.Export)
@@ -84,4 +99,5 @@ end
 
 SLASH_SIMFOREVEREXPORTER1 = "/simsforever"
 SLASH_SIMFOREVEREXPORTER2 = "/sfexport"
+SLASH_SIMFOREVEREXPORTER3 = "/simf"
 SlashCmdList.SIMFOREVEREXPORTER = command

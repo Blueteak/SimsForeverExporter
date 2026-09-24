@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: SimsForever Exporter
-## Notes: Export your character to SimsForever with /sfexport. No automatic uploads.
+## Notes: Export your character to SimsForever with /simf or /sfexport. No automatic uploads.
 ## Author: SimsForever contributors
 ## Version: @project-version@
 ## X-Curse-Project-ID: 1706857
